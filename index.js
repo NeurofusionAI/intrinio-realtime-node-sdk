@@ -15,17 +15,18 @@ async function doBackoff(context, callback) {
   let backoff = SELF_HEAL_BACKOFFS[i]
   let success = true
   await callback.call(context).catch(() => success = false)
-  while (!success) {
-    if (context._stopped) {
-      break;
-    } 
+  while (!context._stopped && !success) {
     console.log("Intrinio Realtime Client - Sleeping for %isec", (backoff/1000))
     await sleep(backoff)
+    if (context._stopped) {
+      throw ("Intrinio Realtime Client - Client stopped")
+    } 
     i = Math.min(i + 1, SELF_HEAL_BACKOFFS.length - 1)
     backoff = SELF_HEAL_BACKOFFS[i]
     success = true
     await callback.call(context).catch(() => success = false)
   }
+  throw ("Intrinio Realtime Client - Client stopped")
 }
 
 function readString(bytes, startPos, endPos) {
@@ -549,8 +550,12 @@ class IntrinioRealtime {
   }
 
   async join(symbols, tradesOnly) {
-    while (!this._isReady) {
+    while (!this._stopped && !this._isReady) {
       await sleep(1000)
+    }
+    if (this._stopped) {
+      console.error("Intrinio Realtime Client - Cannot join channels after stopping")
+      return
     }
     let _tradesOnly = (this._config.tradesOnly ? this._config.tradesOnly : false) || (tradesOnly ? tradesOnly : false)
     if (symbols instanceof Array) {
