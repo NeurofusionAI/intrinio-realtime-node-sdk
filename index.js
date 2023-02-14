@@ -16,6 +16,9 @@ async function doBackoff(context, callback) {
   let success = true
   await callback.call(context).catch(() => success = false)
   while (!success) {
+    if (this._stopped) {
+      break;
+    } 
     console.log("Intrinio Realtime Client - Sleeping for %isec", (backoff/1000))
     await sleep(backoff)
     i = Math.min(i + 1, SELF_HEAL_BACKOFFS.length - 1)
@@ -118,6 +121,7 @@ class IntrinioRealtime {
     this._token = null
     this._websocket = null
     this._isReady = false
+    this._stopped = false
     this._attemptingReconnect = false
     this._lastReset = Date.now()
     this._msgCount = 0
@@ -408,7 +412,7 @@ class IntrinioRealtime {
             fulfill(true)
           }
           this._websocket.onclose = (code) => {
-            if (!this._attemptingReconnect) {
+            if (!this._stopped && !this._attemptingReconnect) {
               this._isReady = false
               clearInterval(this._heartbeat)
               this._heartbeat = null
@@ -482,7 +486,7 @@ class IntrinioRealtime {
             fulfill(true)
           })
           this._websocket.on("close", (code, reason) => {
-            if (!this._attemptingReconnect) {
+            if (!this._stopped && !this._attemptingReconnect) {
               this._isReady = false
               clearInterval(this._heartbeat)
               this._heartbeat = null
@@ -596,15 +600,21 @@ class IntrinioRealtime {
 
   async stop() {
     this._isReady = false
+    this._stopped = true
+    if (this._heartbeat) {
+      clearInterval(this._heartbeat)
+      this._heartbeat = null
+    }
+    this._onEvent = (event, message) => {}
     console.log("Intrinio Realtime Client - Leaving subscribed channels")
     for (const channel of this._channels.keys()) {
       this._leave(channel)
     }
-    while (this._websocket.bufferedAmount > 0) {
-      await sleep(500)
-    }
-    console.log("Intrinio Realtime Client - Websocket closing")
     if (this._websocket) {
+      while (this._websocket.bufferedAmount > 0) {
+        await sleep(500)
+      }
+      console.log("Intrinio Realtime Client - Websocket closing")
       this._websocket.close(1000, "Terminated by client")
     }
   }
