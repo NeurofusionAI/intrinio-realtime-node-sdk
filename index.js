@@ -26,7 +26,6 @@ async function doBackoff(context, callback) {
     success = true
     await callback.call(context).catch(() => success = false)
   }
-  throw ("Intrinio Realtime Client - Client stopped")
 }
 
 function readString(bytes, startPos, endPos) {
