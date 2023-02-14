@@ -16,7 +16,7 @@ async function doBackoff(context, callback) {
   let success = true
   await callback.call(context).catch(() => success = false)
   while (!success) {
-    if (this._stopped) {
+    if (context._stopped) {
       break;
     } 
     console.log("Intrinio Realtime Client - Sleeping for %isec", (backoff/1000))
