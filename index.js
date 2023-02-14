@@ -507,7 +507,12 @@ class IntrinioRealtime {
           })
           this._websocket.on("message", (message) => {
             this._msgCount++
-            this._parseSocketMessage(message)
+            try {
+              this._parseSocketMessage(message)
+            } catch (err) {
+              console.error("Intrinio Realtime Client - Error parsing message: %o", err)
+              this._onEvent('parseerror', err)
+            }
           })
         }
         catch (error) {
