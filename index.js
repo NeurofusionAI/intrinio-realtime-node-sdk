@@ -125,6 +125,7 @@ class IntrinioRealtime {
     this._heartbeat = null
     this._onTrade = (onTrade && (typeof onTrade === "function")) ? onTrade : (_) => {}
     this._onQuote = (onQuote && (typeof onQuote === "function")) ? onQuote : (_) => {}
+    this._onEvent = (typeof this._config.onEvent === "function") ? this._config.onEvent : (event, message) => {}
     this._float32Array = new Float32Array(1)
     this._backingByteArray = new Uint8Array(this._float32Array.buffer)
 
@@ -384,6 +385,7 @@ class IntrinioRealtime {
           this._websocket.binaryType = "arraybuffer"
           this._websocket.onopen = () => {
             console.log("Intrinio Realtime Client - Websocket connected (public key)")
+            this._onEvent("socketconnected", "Websocket connected");
             if (!this._heartbeat) {
               console.log("Intrinio Realtime Client - Starting heartbeat")
               this._heartbeat = setInterval(() => {
@@ -396,6 +398,7 @@ class IntrinioRealtime {
               for (const [channel, tradesOnly] of this._channels) {
                 let message = this._makeJoinMessage(tradesOnly, channel)
                 console.info("Intrinio Realtime Client - Joining channel: %s (trades only = %s)", channel, tradesOnly)
+                this._onEvent("joinchannel", "Joining channel: " + channel + " (trades only = " + tradesOnly + ")");
                 this._websocket.send(message)
               }
             }
@@ -410,6 +413,7 @@ class IntrinioRealtime {
               clearInterval(this._heartbeat)
               this._heartbeat = null
               console.info("Intrinio Realtime Client - Websocket closed (code: %o)", code)
+              this._onEvent('socketclosed', "Websocket closed (code: " + code + ")")
               if (code != 1000) {
                 console.info("Intrinio Realtime Client - Websocket reconnecting...")
                 if (!this._isReady) {
@@ -425,12 +429,19 @@ class IntrinioRealtime {
           }
           this._websocket.onerror = (error) => {
             console.error("Intrinio Realtime Client - Websocket error: %s", error)
+            this._onEvent('socketerror', "Websocket error: " + error)
             reject()
           }
           this._websocket.onmessage = (message) => {
             this._msgCount++
-            if (message.data instanceof ArrayBuffer)
-              this._parseSocketMessage(message.data)
+            if (message.data instanceof ArrayBuffer) {
+              try {
+                this._parseSocketMessage(message.data)
+              } catch (err) {
+                console.error("Intrinio Realtime Client - Error parsing message: %o", err)
+                this._onEvent('parseerror', err)
+              }
+            }
             else
               console.log("Intrinio Realtime Client - Message: %s", message.data)
           }
@@ -449,6 +460,7 @@ class IntrinioRealtime {
           this._websocket = new WebSocket(wsUrl, {perMessageDeflate: false})
           this._websocket.on("open", () => {
             console.log("Intrinio Realtime Client - Websocket connected")
+            this._onEvent("socketconnected", "Websocket connected")
             if (!this._heartbeat) {
               console.log("Intrinio Realtime Client - Starting heartbeat")
               this._heartbeat = setInterval(() => {
@@ -475,6 +487,7 @@ class IntrinioRealtime {
               clearInterval(this._heartbeat)
               this._heartbeat = null
               console.info("Intrinio Realtime Client - Websocket closed (code: %o)", code)
+              this._onEvent('socketclosed', "Websocket closed (code: " + code + ")")
               if (code != 1000) {
                 console.info("Intrinio Realtime Client - Websocket reconnecting...")
                 if (!this._isReady) {
@@ -499,6 +512,7 @@ class IntrinioRealtime {
         }
         catch (error) {
           console.error("Intrinio Realtime Client - Error establishing websocket connection (%s)", error)
+          this._onEvent('socketerror', error)
           reject()
         }
       })
